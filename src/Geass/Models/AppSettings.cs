@@ -8,6 +8,7 @@ public class AppSettings
     public string Language { get; set; } = TranscriptionLanguages.Default;
     public string HotkeyKey { get; set; } = "P";
     public string HotkeyModifier { get; set; } = "Alt";
+    public bool EnableScreenContext { get; set; } = false;
 }
 
 public static class TranscriptionLanguages

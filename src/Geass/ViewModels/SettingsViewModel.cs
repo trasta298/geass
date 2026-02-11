@@ -57,6 +57,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSaved;
 
+    [ObservableProperty]
+    private bool _enableScreenContext;
+
     public string[] AvailableModels => GeminiModels.Available;
 
     public SettingsViewModel(SettingsService settingsService, MemoryService memoryService, GeminiService geminiService, HotkeyService hotkeyService)
@@ -93,6 +96,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedTranscriptionModel = settings.TranscriptionModel;
         SelectedAnalysisModel = settings.AnalysisModel;
         Language = settings.Language;
+        EnableScreenContext = settings.EnableScreenContext;
 
         _hotkeyKey = HotkeyService.ParseKey(settings.HotkeyKey);
         _hotkeyModifier = HotkeyService.ParseModifier(settings.HotkeyModifier);
@@ -129,7 +133,8 @@ public partial class SettingsViewModel : ObservableObject
             AnalysisModel = SelectedAnalysisModel,
             Language = Language,
             HotkeyKey = _hotkeyKey.ToString(),
-            HotkeyModifier = _hotkeyModifier.ToString()
+            HotkeyModifier = _hotkeyModifier.ToString(),
+            EnableScreenContext = EnableScreenContext
         };
         await _settingsService.SaveAsync(settings);
 

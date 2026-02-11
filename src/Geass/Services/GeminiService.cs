@@ -35,12 +35,13 @@ public class GeminiService
     public async IAsyncEnumerable<string> TranscribeStreamAsync(
         string wavPath,
         MemoryStore memory,
+        string? screenDescription = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var googleAi = new GoogleAi(_apiKey);
         var model = googleAi.CreateGeminiModel(
             _transcriptionModel,
-            systemInstruction: BuildSystemInstruction(memory, _language));
+            systemInstruction: BuildSystemInstruction(memory, _language, screenDescription));
 
         var audioBytes = await File.ReadAllBytesAsync(wavPath, ct);
         var paddedAudio = AppendSilence(audioBytes, sampleRate: 16000, channels: 1, bitsPerSample: 16, durationMs: 500);
@@ -60,6 +61,30 @@ public class GeminiService
             if (!string.IsNullOrEmpty(text))
                 yield return text;
         }
+    }
+
+    public async Task<string?> DescribeScreenAsync(byte[] imageData, CancellationToken ct = default)
+    {
+        var googleAi = new GoogleAi(_apiKey);
+        var model = googleAi.CreateGeminiModel(_transcriptionModel);
+
+        var request = new GenerateContentRequest();
+        var base64Image = Convert.ToBase64String(imageData);
+        request.AddInlineData(base64Image, "image/jpeg", true, "user");
+        request.AddText(
+            "Extract all specific terms from this screenshot as a comma-separated list. " +
+            "Include: keyboard shortcuts (e.g. Alt+P, Ctrl+C), proper nouns, product/service names, " +
+            "file names, function names, variable names, URLs, technical terms, and UI labels. " +
+            "Output ONLY the comma-separated list, nothing else. " +
+            "Example output: Alt+P, Geass.csproj, Debug.WriteLine, SendInput, SCREEN CONTEXT",
+            true, "user");
+        request.GenerationConfig = new GenerationConfig
+        {
+            ThinkingConfig = BuildThinkingConfig(_transcriptionModel, ThinkingMode.Off)
+        };
+
+        var response = await model.GenerateContentAsync(request, ct);
+        return response.Text();
     }
 
     public async Task<MemoryStore?> AnalyzeCorrectionAsync(
@@ -164,7 +189,7 @@ public class GeminiService
         return ParseMemoryFromResponse(text, memory);
     }
 
-    private static string BuildSystemInstruction(MemoryStore memory, string language)
+    private static string BuildSystemInstruction(MemoryStore memory, string language, string? screenTerms = null)
     {
         var langHint = language == TranscriptionLanguages.Default
             ? "Auto-detect the language from the audio."
@@ -184,6 +209,11 @@ public class GeminiService
             - {langHint}
             """
         };
+
+        if (!string.IsNullOrWhiteSpace(screenTerms))
+        {
+            parts.Add($"VOCABULARY HINT from user's screen - When the speaker refers to these terms, use the exact spelling shown here: {screenTerms}");
+        }
 
         if (memory.DifficultWords.Count > 0)
         {

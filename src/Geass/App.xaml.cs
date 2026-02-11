@@ -24,6 +24,10 @@ public partial class App : Application
     private MemoryService _memoryService = null!;
     private SettingsService _settingsService = null!;
     private ClipboardService _clipboardService = null!;
+    private ScreenCaptureService _screenCaptureService = null!;
+
+    private bool _enableScreenContext;
+    private Task<string?>? _screenAnalysisTask;
 
     private TranscriptionWindow? _transcriptionWindow;
     private CancellationTokenSource? _streamingCts;
@@ -62,6 +66,7 @@ public partial class App : Application
         services.AddSingleton<AudioCaptureService>();
         services.AddSingleton<ClipboardService>();
         services.AddSingleton<HotkeyService>();
+        services.AddSingleton<ScreenCaptureService>();
 
         _serviceProvider = services.BuildServiceProvider();
 
@@ -70,6 +75,7 @@ public partial class App : Application
         _audioCaptureService = _serviceProvider.GetRequiredService<AudioCaptureService>();
         _clipboardService = _serviceProvider.GetRequiredService<ClipboardService>();
         _hotkeyService = _serviceProvider.GetRequiredService<HotkeyService>();
+        _screenCaptureService = _serviceProvider.GetRequiredService<ScreenCaptureService>();
     }
 
     private async Task LoadSettings()
@@ -79,6 +85,8 @@ public partial class App : Application
         _currentTranscriptionModel = settings.TranscriptionModel;
         _currentAnalysisModel = settings.AnalysisModel;
         _currentLanguage = settings.Language;
+
+        _enableScreenContext = settings.EnableScreenContext;
 
         var key = HotkeyService.ParseKey(settings.HotkeyKey);
         var modifier = HotkeyService.ParseModifier(settings.HotkeyModifier);
@@ -160,6 +168,18 @@ public partial class App : Application
         _state = AppState.Recording;
         _previousForegroundWindow = GetForegroundWindow();
 
+        // Capture screen and start background analysis during recording
+        _screenAnalysisTask = null;
+        if (_enableScreenContext)
+        {
+            var imageData = _screenCaptureService.CaptureWindow(_previousForegroundWindow);
+            if (imageData != null)
+            {
+                var gemini = new GeminiService(_currentApiKey, _currentTranscriptionModel, _currentAnalysisModel, _currentLanguage);
+                _screenAnalysisTask = gemini.DescribeScreenAsync(imageData);
+            }
+        }
+
         _transcriptionWindow = new TranscriptionWindow
         {
             OnStopRecording = async () => await StopRecordingAndTranscribe(),
@@ -199,11 +219,20 @@ public partial class App : Application
     {
         try
         {
+            // Retrieve screen analysis result (wait if not yet complete, null on failure)
+            string? screenDescription = null;
+            if (_screenAnalysisTask != null)
+            {
+                try { screenDescription = await _screenAnalysisTask; }
+                catch { /* Continue without screen context */ }
+                _screenAnalysisTask = null;
+            }
+
             var memory = await _memoryService.LoadAsync();
             var gemini = new GeminiService(_currentApiKey, _currentTranscriptionModel, _currentAnalysisModel, _currentLanguage);
 
             var hasContent = false;
-            await foreach (var chunk in gemini.TranscribeStreamAsync(wavPath, memory, ct))
+            await foreach (var chunk in gemini.TranscribeStreamAsync(wavPath, memory, screenDescription, ct))
             {
                 hasContent = true;
                 _transcriptionWindow?.AppendStreamingText(chunk);
@@ -316,6 +345,7 @@ public partial class App : Application
         _streamingCts?.Cancel();
         _streamingCts?.Dispose();
         _streamingCts = null;
+        _screenAnalysisTask = null;
 
         if (_state == AppState.Recording)
         {

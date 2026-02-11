@@ -144,6 +144,31 @@
                 </StackPanel>
             </Border>
 
+            <!-- Screen Context Section -->
+            <Border Style="{StaticResource SectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="SCREEN CONTEXT" Style="{StaticResource SectionLabelStyle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Send screenshot to AI"
+                                   Style="{StaticResource BaseTextStyle}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                        <CheckBox Grid.Column="1"
+                                  Style="{StaticResource ToggleSwitchStyle}"
+                                  IsChecked="{Binding EnableScreenContext}"
+                                  VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="Captures active window when recording starts to improve transcription accuracy"
+                               Style="{StaticResource HintTextStyle}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
             <!-- Shortcut Section -->
             <Border Style="{StaticResource SectionCardStyle}">
                 <StackPanel>
