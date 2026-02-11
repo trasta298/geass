@@ -1,0 +1,297 @@
+<Window x:Class="Geass.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Geass.ViewModels"
+        Width="460"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        Title="Geass Settings"
+        ResizeMode="NoResize"
+        Background="{StaticResource BackgroundBrush}">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Resources/Colors.xaml" />
+                <ResourceDictionary Source="/Resources/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+            <!-- Spinning animation storyboard -->
+            <Storyboard x:Key="SpinAnimation" RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetName="MemorySpinner"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                 From="0" To="360" Duration="0:0:1" />
+            </Storyboard>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border Style="{StaticResource CardStyle}" Margin="0">
+        <StackPanel Margin="20,18,20,18">
+
+            <!-- Header -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                <Ellipse Width="22" Height="22" Margin="0,0,8,0">
+                    <Ellipse.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#FF6B9D" Offset="0" />
+                            <GradientStop Color="#FF8FB4" Offset="1" />
+                        </LinearGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+                <TextBlock Text="Settings"
+                           Style="{StaticResource BaseTextStyle}"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- API Key Section -->
+            <Border Style="{StaticResource SectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="API KEY" Style="{StaticResource SectionLabelStyle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <PasswordBox x:Name="ApiKeyPasswordBox"
+                                     Grid.Column="0"
+                                     Style="{StaticResource PasswordInputStyle}"
+                                     PasswordChanged="ApiKeyPasswordBox_PasswordChanged" />
+
+                        <TextBox x:Name="ApiKeyTextBox"
+                                 Grid.Column="0"
+                                 Style="{StaticResource TextInputStyle}"
+                                 FontSize="13"
+                                 Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                 Visibility="Collapsed" />
+
+                        <ToggleButton x:Name="ShowPasswordToggle"
+                                      Grid.Column="1"
+                                      Width="28" Height="28"
+                                      Margin="4,0,0,0"
+                                      Background="Transparent"
+                                      BorderThickness="0"
+                                      Cursor="Hand"
+                                      Click="ShowPasswordToggle_Click">
+                            <Path x:Name="EyeIcon"
+                                  Width="15" Height="15"
+                                  Stretch="Uniform"
+                                  Fill="{StaticResource TextSecondaryBrush}"
+                                  Data="M12,4.5C7,4.5 2.73,7.61 1,12c1.73,4.39 6,7.5 11,7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12,17c-2.76,0-5-2.24-5-5s2.24-5 5-5 5,2.24 5,5-2.24,5-5,5zM12,9c-1.66,0-3,1.34-3,3s1.34,3 3,3 3-1.34 3-3-1.34-3-3-3z" />
+                        </ToggleButton>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Models Section -->
+            <Border Style="{StaticResource SectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="MODELS" Style="{StaticResource SectionLabelStyle}" />
+
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Transcription"
+                                   Style="{StaticResource BaseTextStyle}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1"
+                                  Style="{StaticResource FlatComboBoxStyle}"
+                                  ItemContainerStyle="{StaticResource FlatComboBoxItemStyle}"
+                                  ItemsSource="{Binding AvailableModels}"
+                                  SelectedItem="{Binding SelectedTranscriptionModel}" />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Analysis"
+                                   Style="{StaticResource BaseTextStyle}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1"
+                                  Style="{StaticResource FlatComboBoxStyle}"
+                                  ItemContainerStyle="{StaticResource FlatComboBoxItemStyle}"
+                                  ItemsSource="{Binding AvailableModels}"
+                                  SelectedItem="{Binding SelectedAnalysisModel}" />
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Language"
+                                   Style="{StaticResource BaseTextStyle}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1"
+                                 Style="{StaticResource TextInputStyle}"
+                                 FontSize="13"
+                                 Text="{Binding Language, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Shortcut Section -->
+            <Border Style="{StaticResource SectionCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="SHORTCUT" Style="{StaticResource SectionLabelStyle}" />
+                    <Border x:Name="HotkeyRecorder"
+                            Background="White"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="10,7"
+                            Cursor="Hand"
+                            Focusable="True"
+                            MouseDown="HotkeyRecorder_MouseDown"
+                            KeyDown="HotkeyRecorder_KeyDown"
+                            LostFocus="HotkeyRecorder_LostFocus">
+                        <Grid>
+                            <TextBlock Text="{Binding HotkeyDisplay}"
+                                       FontSize="13"
+                                       FontFamily="{StaticResource AppFontFamily}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRecordingHotkey}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Press shortcut..."
+                                       FontSize="13"
+                                       FontFamily="{StaticResource AppFontFamily}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRecordingHotkey}" Value="False">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="Click to change, then press new shortcut"
+                               Style="{StaticResource HintTextStyle}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Memory Section -->
+            <Border Style="{StaticResource SectionCardStyle}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="MEMORY"
+                                   Style="{StaticResource SectionLabelStyle}"
+                                   Margin="0" />
+
+                        <!-- Updating spinner -->
+                        <Grid Grid.Column="1"
+                              Margin="6,0,0,0"
+                              VerticalAlignment="Center"
+                              Visibility="{Binding IsMemoryUpdating, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse x:Name="MemorySpinner"
+                                         Width="11" Height="11"
+                                         StrokeThickness="1.5"
+                                         Stroke="{StaticResource AccentBrush}"
+                                         StrokeDashArray="2.5 1.5"
+                                         RenderTransformOrigin="0.5,0.5">
+                                    <Ellipse.RenderTransform>
+                                        <RotateTransform Angle="0" />
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                                <TextBlock Text="Updating..."
+                                           FontSize="10"
+                                           Foreground="{StaticResource AccentBrush}"
+                                           Margin="4,0,0,0"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Grid.Column="3"
+                                   Style="{StaticResource HintTextStyle}"
+                                   FontSize="11"
+                                   Margin="0"
+                                   VerticalAlignment="Center">
+                            <Run Text="{Binding EstimatedTokens, Mode=OneWay}" />
+                            <Run Text=" tokens" />
+                        </TextBlock>
+                    </Grid>
+                    <TextBox Style="{StaticResource TextInputStyle}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             FontFamily="Consolas, Courier New, monospace"
+                             FontSize="11.5"
+                             Height="160"
+                             VerticalScrollBarVisibility="Auto"
+                             Text="{Binding MemoryJson, UpdateSourceTrigger=PropertyChanged}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Content="Optimize"
+                                Style="{StaticResource GhostButtonStyle}"
+                                Padding="8,4"
+                                FontSize="11.5"
+                                Command="{Binding OptimizeMemoryCommand}"
+                                ToolTip="Compress memory using AI to stay within token limits"
+                                Margin="0,0,4,0" />
+                        <Button Content="Clear"
+                                Style="{StaticResource GhostButtonStyle}"
+                                Padding="8,4"
+                                FontSize="11.5"
+                                Command="{Binding ClearMemoryCommand}"
+                                ToolTip="Delete all memory data" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Save Button -->
+            <Button Content="{Binding SaveButtonText}"
+                    Command="{Binding SaveCommand}"
+                    HorizontalAlignment="Stretch"
+                    Padding="14,9"
+                    Margin="0,2,0,0">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSaved}" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#34C759" />
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+        </StackPanel>
+    </Border>
+</Window>
