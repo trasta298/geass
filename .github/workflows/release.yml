@@ -14,7 +14,12 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      SEMVER: ${{ github.event.inputs.version }}
     steps:
+      - name: Strip v prefix for dotnet version
+        run: echo "SEMVER=$('${{ github.event.inputs.version }}'.TrimStart('v'))" >> $env:GITHUB_ENV
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
@@ -22,7 +27,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Publish
-        run: dotnet publish src/Geass/Geass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ github.event.inputs.version }} -o publish
+        run: dotnet publish src/Geass/Geass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ env.SEMVER }} -o publish
 
       - name: Create zip
         run: Compress-Archive -Path publish/* -DestinationPath "Geass-${{ github.event.inputs.version }}-win-x64.zip"
