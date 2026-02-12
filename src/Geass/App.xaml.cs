@@ -122,20 +122,17 @@ public partial class App : Application
 
     private static System.Drawing.Icon CreateDefaultIcon()
     {
+        var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "icon.ico");
+        if (System.IO.File.Exists(iconPath))
+            return new System.Drawing.Icon(iconPath, 16, 16);
+
+        // Fallback: generate a simple icon programmatically
         using var bitmap = new System.Drawing.Bitmap(16, 16);
         using var g = System.Drawing.Graphics.FromImage(bitmap);
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(System.Drawing.Color.Transparent);
         using var brush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(255, 107, 157));
         g.FillEllipse(brush, 1, 1, 14, 14);
-        using var font = new System.Drawing.Font("Segoe UI", 7f, System.Drawing.FontStyle.Bold);
-        using var textBrush = new System.Drawing.SolidBrush(System.Drawing.Color.White);
-        var sf = new System.Drawing.StringFormat
-        {
-            Alignment = System.Drawing.StringAlignment.Center,
-            LineAlignment = System.Drawing.StringAlignment.Center
-        };
-        g.DrawString("G", font, textBrush, new System.Drawing.RectangleF(0, 0, 16, 16), sf);
         return System.Drawing.Icon.FromHandle(bitmap.GetHicon());
     }
 
