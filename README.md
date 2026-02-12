@@ -6,9 +6,7 @@ Voice-to-text transcription tool for Windows. Press a hotkey, speak, and the tra
 
 Powered by Gemini API.
 
-## Demo
-
-https://github.com/trasta298/geass/raw/main/docs/demo.mp4
+https://github.com/user-attachments/assets/22b1cbd7-f248-4996-9b20-0c21d9001d26
 
 ## Features
 

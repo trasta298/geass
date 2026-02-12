@@ -6,9 +6,7 @@ Windows向けの音声文字起こしツール。ホットキーを押して話�
 
 Gemini API を使用しています。
 
-## デモ
-
-https://github.com/trasta298/geass/raw/main/docs/demo.mp4
+https://github.com/user-attachments/assets/22b1cbd7-f248-4996-9b20-0c21d9001d26
 
 ## 特徴
 
