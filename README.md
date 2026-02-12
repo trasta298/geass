@@ -6,6 +6,10 @@ Voice-to-text transcription tool for Windows. Press a hotkey, speak, and the tra
 
 Powered by Gemini API.
 
+## Demo
+
+https://github.com/trasta298/geass/raw/main/docs/demo.mp4
+
 ## Features
 
 - **Hotkey-driven workflow** — Press `Alt+P` to start recording, press again to transcribe, and the result is pasted into your previous window

@@ -6,6 +6,10 @@ Windows向けの音声文字起こしツール。ホットキーを押して話�
 
 Gemini API を使用しています。
 
+## デモ
+
+https://github.com/trasta298/geass/raw/main/docs/demo.mp4
+
 ## 特徴
 
 - **ホットキー駆動** — `Alt+P` で録音開始、もう一度押すと文字起こし、結果は元のウィンドウに自動ペースト
