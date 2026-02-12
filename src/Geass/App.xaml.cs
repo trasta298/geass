@@ -13,7 +13,7 @@ namespace Geass;
 
 public partial class App : Application
 {
-    private enum AppState { Idle, Recording, Streaming, Preview }
+    private enum AppState { Idle, Recording, Streaming, Preview, StyleRecording, StyleStreaming }
 
     private static Mutex? _mutex;
     private ServiceProvider? _serviceProvider;
@@ -38,6 +38,10 @@ public partial class App : Application
     private string _currentAnalysisModel = GeminiModels.DefaultAnalysis;
     private string _currentLanguage = TranscriptionLanguages.Default;
     private IntPtr _previousForegroundWindow;
+    private string _currentStyleKey = "Tab";
+
+    private string? _textBeforeStyle;
+    private int _styleOperationId;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -87,6 +91,7 @@ public partial class App : Application
         _currentLanguage = settings.Language;
 
         _enableScreenContext = settings.EnableScreenContext;
+        _currentStyleKey = settings.StyleKey;
 
         var key = HotkeyService.ParseKey(settings.HotkeyKey);
         var modifier = HotkeyService.ParseModifier(settings.HotkeyModifier);
@@ -160,6 +165,14 @@ public partial class App : Application
             case AppState.Preview:
                 CancelCurrentOperation();
                 break;
+
+            case AppState.StyleRecording:
+                await StopStyleRecordingAndReformat();
+                break;
+
+            case AppState.StyleStreaming:
+                CancelCurrentOperation();
+                break;
         }
     }
 
@@ -184,7 +197,11 @@ public partial class App : Application
         {
             OnStopRecording = async () => await StopRecordingAndTranscribe(),
             OnConfirm = async () => await ConfirmTranscription(),
-            OnCancel = CancelCurrentOperation
+            OnCancel = CancelCurrentOperation,
+            OnStartStyleRecording = StartStyleRecording,
+            OnUndoStyle = UndoStyle,
+            StyleKey = Enum.TryParse<System.Windows.Input.Key>(_currentStyleKey, out var sk)
+                ? sk : System.Windows.Input.Key.Tab
         };
 
         _audioCaptureService.RecordingStopped += OnRecordingAutoStopped;
@@ -340,8 +357,116 @@ public partial class App : Application
         }
     }
 
+    // ── Style Recording / Reformat ──
+
+    private void StartStyleRecording()
+    {
+        if (_state != AppState.Preview || _transcriptionWindow is null)
+            return;
+
+        _state = AppState.StyleRecording;
+        _textBeforeStyle = _transcriptionWindow.TranscribedText;
+        var opId = ++_styleOperationId;
+
+        // Swap the stop-recording callback so Enter triggers style flow
+        _transcriptionWindow.OnStopRecording = async () => await StopStyleRecordingAndReformat();
+
+        _audioCaptureService.RecordingStopped += OnStyleRecordingAutoStopped;
+        _audioCaptureService.StartRecording();
+        _transcriptionWindow.ShowStyleRecording();
+    }
+
+    private async Task StopStyleRecordingAndReformat()
+    {
+        if (_state != AppState.StyleRecording)
+            return;
+
+        _state = AppState.StyleStreaming;
+        _audioCaptureService.RecordingStopped -= OnStyleRecordingAutoStopped;
+
+        _transcriptionWindow?.ShowStyleStreaming();
+
+        var wavPath = await _audioCaptureService.StopRecording();
+
+        _streamingCts = new CancellationTokenSource();
+        _ = StreamStyleReformat(wavPath, _streamingCts.Token);
+    }
+
+    private async Task StreamStyleReformat(string wavPath, CancellationToken ct)
+    {
+        var opId = _styleOperationId;
+        try
+        {
+            var gemini = new GeminiService(_currentApiKey, _currentTranscriptionModel, _currentAnalysisModel, _currentLanguage);
+
+            // 1. Transcribe the style instruction voice
+            var styleInstruction = "";
+            await foreach (var chunk in gemini.TranscribeStyleInstructionAsync(wavPath, ct))
+            {
+                styleInstruction += chunk.TrimEnd('\r', '\n');
+            }
+
+            if (string.IsNullOrWhiteSpace(styleInstruction))
+                return;
+
+            // 2. Reformat the text using the style instruction
+            var textToReformat = _textBeforeStyle ?? "";
+            var reformattedText = "";
+
+            await foreach (var chunk in gemini.ReformatStreamAsync(textToReformat, styleInstruction, ct))
+            {
+                if (_styleOperationId != opId) return;
+                reformattedText += chunk.TrimEnd('\r', '\n');
+                await Dispatcher.InvokeAsync(() => _transcriptionWindow?.SetStreamingText(reformattedText));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled by user
+        }
+        catch (Exception) when (_styleOperationId == opId)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_textBeforeStyle != null)
+                    _transcriptionWindow?.SetStreamingText(_textBeforeStyle);
+            });
+        }
+        finally
+        {
+            try { File.Delete(wavPath); } catch { }
+            if (_styleOperationId == opId)
+                await Dispatcher.InvokeAsync(ReturnToEditing);
+        }
+    }
+
+    private void ReturnToEditing()
+    {
+        if (_transcriptionWindow is null) return;
+
+        _state = AppState.Preview;
+        _transcriptionWindow.OnStopRecording = async () => await StopRecordingAndTranscribe();
+        _transcriptionWindow.ShowEditing();
+    }
+
+    private void UndoStyle()
+    {
+        if (_textBeforeStyle == null || _transcriptionWindow is null)
+            return;
+
+        _transcriptionWindow.SetStreamingText(_textBeforeStyle);
+        _textBeforeStyle = null;
+    }
+
+    private async void OnStyleRecordingAutoStopped()
+    {
+        await Dispatcher.InvokeAsync(async () => await StopStyleRecordingAndReformat());
+    }
+
     private void CancelCurrentOperation()
     {
+        var wasStyleState = _state is AppState.StyleRecording or AppState.StyleStreaming;
+
         _streamingCts?.Cancel();
         _streamingCts?.Dispose();
         _streamingCts = null;
@@ -351,6 +476,21 @@ public partial class App : Application
         {
             _audioCaptureService.RecordingStopped -= OnRecordingAutoStopped;
             _ = _audioCaptureService.StopRecording();
+        }
+
+        if (_state == AppState.StyleRecording)
+        {
+            _audioCaptureService.RecordingStopped -= OnStyleRecordingAutoStopped;
+            _ = _audioCaptureService.StopRecording();
+        }
+
+        if (wasStyleState)
+        {
+            // Restore text and return to editing (don't close the window)
+            if (_textBeforeStyle != null)
+                _transcriptionWindow?.SetStreamingText(_textBeforeStyle);
+            ReturnToEditing();
+            return;
         }
 
         if (_transcriptionWindow is not null)

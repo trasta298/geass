@@ -63,6 +63,62 @@ public class GeminiService
         }
     }
 
+    public async IAsyncEnumerable<string> TranscribeStyleInstructionAsync(
+        string wavPath,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var googleAi = new GoogleAi(_apiKey);
+        var model = googleAi.CreateGeminiModel(
+            _transcriptionModel,
+            systemInstruction: "You are a speech-to-text transcription engine. Output ONLY the verbatim transcription of the spoken words. Nothing else.");
+
+        var audioBytes = await File.ReadAllBytesAsync(wavPath, ct);
+        var paddedAudio = AppendSilence(audioBytes, sampleRate: 16000, channels: 1, bitsPerSample: 16, durationMs: 500);
+        var base64Audio = Convert.ToBase64String(paddedAudio);
+
+        var request = new GenerateContentRequest();
+        request.AddText("Transcribe.", true, "user");
+        request.AddInlineData(base64Audio, "audio/wav", true, "user");
+        request.GenerationConfig = new GenerationConfig
+        {
+            ThinkingConfig = BuildThinkingConfig(_transcriptionModel, ThinkingMode.Off)
+        };
+
+        await foreach (var response in model.StreamContentAsync(request, ct))
+        {
+            var text = response.Text();
+            if (!string.IsNullOrEmpty(text))
+                yield return text;
+        }
+    }
+
+    public async IAsyncEnumerable<string> ReformatStreamAsync(
+        string text,
+        string styleInstruction,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var googleAi = new GoogleAi(_apiKey);
+        var model = googleAi.CreateGeminiModel(
+            _transcriptionModel,
+            systemInstruction: "Reformat the given text according to the user's style instruction. Output ONLY the reformatted text.");
+
+        var prompt = $"## Text\n{text}\n\n## Style instruction\n{styleInstruction}";
+
+        var request = new GenerateContentRequest();
+        request.AddText(prompt, true, "user");
+        request.GenerationConfig = new GenerationConfig
+        {
+            ThinkingConfig = BuildThinkingConfig(_transcriptionModel, ThinkingMode.Off)
+        };
+
+        await foreach (var response in model.StreamContentAsync(request, ct))
+        {
+            var chunk = response.Text();
+            if (!string.IsNullOrEmpty(chunk))
+                yield return chunk;
+        }
+    }
+
     public async Task<string?> DescribeScreenAsync(byte[] imageData, CancellationToken ct = default)
     {
         var googleAi = new GoogleAi(_apiKey);

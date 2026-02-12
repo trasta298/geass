@@ -112,6 +112,58 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void StyleKeyRecorder_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        ViewModel.IsRecordingStyleKey = true;
+        StyleKeyRecorder.BorderBrush = (Brush)FindResource("AccentBrush");
+        StyleKeyRecorder.Focus();
+        e.Handled = true;
+    }
+
+    private void StyleKeyRecorder_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (!ViewModel.IsRecordingStyleKey) return;
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        // Ignore modifier-only presses
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // Escape cancels recording
+        if (key == Key.Escape)
+        {
+            ViewModel.IsRecordingStyleKey = false;
+            StyleKeyRecorder.BorderBrush = (Brush)FindResource("BorderBrush");
+            e.Handled = true;
+            return;
+        }
+
+        // Disallow Enter (conflicts with confirm) and Escape (conflicts with cancel)
+        if (key == Key.Enter)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        ViewModel.SetStyleKey(key);
+        StyleKeyRecorder.BorderBrush = (Brush)FindResource("BorderBrush");
+        e.Handled = true;
+    }
+
+    private void StyleKeyRecorder_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.IsRecordingStyleKey)
+        {
+            ViewModel.IsRecordingStyleKey = false;
+            StyleKeyRecorder.BorderBrush = (Brush)FindResource("BorderBrush");
+        }
+    }
+
     private void ShowPasswordToggle_Click(object sender, RoutedEventArgs e)
     {
         var isChecked = ShowPasswordToggle.IsChecked == true;

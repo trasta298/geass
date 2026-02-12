@@ -40,6 +40,14 @@ public partial class SettingsViewModel : ObservableObject
     private bool _isRecordingHotkey;
 
     [ObservableProperty]
+    private string _styleKeyDisplay = "Tab";
+
+    private Key _styleKey = Key.Tab;
+
+    [ObservableProperty]
+    private bool _isRecordingStyleKey;
+
+    [ObservableProperty]
     private string _language = TranscriptionLanguages.Default;
 
     [ObservableProperty]
@@ -102,6 +110,9 @@ public partial class SettingsViewModel : ObservableObject
         _hotkeyModifier = HotkeyService.ParseModifier(settings.HotkeyModifier);
         HotkeyDisplay = HotkeyService.FormatHotkey(_hotkeyModifier, _hotkeyKey);
 
+        _styleKey = Enum.TryParse<Key>(settings.StyleKey, out var sk) ? sk : Key.Tab;
+        StyleKeyDisplay = FormatKeyName(_styleKey);
+
         var memory = await _memoryService.LoadAsync();
         MemoryJson = JsonSerializer.Serialize(memory, DisplayJsonOptions);
         EstimatedTokens = _memoryService.EstimateTokens(memory);
@@ -123,6 +134,29 @@ public partial class SettingsViewModel : ObservableObject
         IsRecordingHotkey = false;
     }
 
+    public void SetStyleKey(Key key)
+    {
+        _styleKey = key;
+        StyleKeyDisplay = FormatKeyName(key);
+        IsRecordingStyleKey = false;
+    }
+
+    public static string FormatKeyName(Key key) => key switch
+    {
+        Key.OemTilde => "~",
+        Key.OemMinus => "-",
+        Key.OemPlus => "+",
+        Key.OemOpenBrackets => "[",
+        Key.OemCloseBrackets => "]",
+        Key.OemBackslash or Key.Oem5 => "\\",
+        Key.OemSemicolon or Key.Oem1 => ";",
+        Key.OemQuotes or Key.Oem7 => "'",
+        Key.OemComma => ",",
+        Key.OemPeriod => ".",
+        Key.Oem2 => "/",
+        _ => key.ToString()
+    };
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -134,7 +168,8 @@ public partial class SettingsViewModel : ObservableObject
             Language = Language,
             HotkeyKey = _hotkeyKey.ToString(),
             HotkeyModifier = _hotkeyModifier.ToString(),
-            EnableScreenContext = EnableScreenContext
+            EnableScreenContext = EnableScreenContext,
+            StyleKey = _styleKey.ToString()
         };
         await _settingsService.SaveAsync(settings);
 

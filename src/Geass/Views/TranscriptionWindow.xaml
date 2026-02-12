@@ -149,6 +149,9 @@
                             <Run Text="Enter" FontWeight="SemiBold" />
                             <Run Text=" 確定" />
                             <Run Text="  " />
+                            <Run x:Name="StyleKeyHint" Text="Tab" FontWeight="SemiBold" />
+                            <Run Text=" スタイル" />
+                            <Run Text="  " />
                             <Run Text="Esc" FontWeight="SemiBold" />
                             <Run Text=" キャンセル" />
                         </TextBlock>

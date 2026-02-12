@@ -31,6 +31,9 @@ public partial class TranscriptionWindow : Window
     public Action? OnConfirm { get; set; }
     public Action? OnCancel { get; set; }
     public Action? OnStopRecording { get; set; }
+    public Action? OnStartStyleRecording { get; set; }
+    public Action? OnUndoStyle { get; set; }
+    public Key StyleKey { get; set; } = Key.Tab;
 
     public TranscriptionWindow()
     {
@@ -184,6 +187,7 @@ public partial class TranscriptionWindow : Window
 
             OriginalText = TranscriptionTextBox.Text;
             TranscriptionTextBox.IsReadOnly = false;
+            StyleKeyHint.Text = StyleKey == Key.Tab ? "Tab" : StyleKey.ToString();
 
             ForceForeground();
             TranscriptionTextBox.Focus();
@@ -199,6 +203,60 @@ public partial class TranscriptionWindow : Window
                     TranscriptionTextBox.Focus();
                 }
             });
+        });
+    }
+
+    // ── State: StyleRecording ──
+
+    public void ShowStyleRecording()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _visualState = ViewState.Recording;
+
+            TranscriptionTextBox.IsReadOnly = true;
+
+            WaveformCanvas.Visibility = Visibility.Visible;
+            RecDot.Visibility = Visibility.Visible;
+            Spinner.Visibility = Visibility.Collapsed;
+            StreamDotsPanel.Visibility = Visibility.Collapsed;
+            StatusText.Text = "Style...";
+            CompactPanel.Visibility = Visibility.Visible;
+
+            StartWaveformAnimation();
+            StartRecDotAnimation();
+            RepositionBottomCenter();
+        });
+    }
+
+    // ── State: StyleStreaming ──
+
+    public void ShowStyleStreaming()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _visualState = ViewState.Streaming;
+
+            StopWaveformAnimation();
+            _recDotAnim?.Stop();
+
+            WaveformCanvas.Visibility = Visibility.Collapsed;
+            RecDot.Visibility = Visibility.Collapsed;
+            Spinner.Visibility = Visibility.Collapsed;
+            StreamDotsPanel.Visibility = Visibility.Visible;
+            StatusText.Text = "Applying...";
+
+            StartStreamDotAnimation();
+        });
+    }
+
+    public void SetStreamingText(string fullText)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            TranscriptionTextBox.Text = fullText;
+            TranscriptionTextBox.CaretIndex = TranscriptionTextBox.Text.Length;
+            TranscriptionTextBox.ScrollToEnd();
         });
     }
 
@@ -313,6 +371,25 @@ public partial class TranscriptionWindow : Window
                            && Keyboard.Modifiers != ModifierKeys.Shift:
                 OnConfirm?.Invoke();
                 e.Handled = true;
+                break;
+
+            case var k when k == StyleKey && _visualState == ViewState.Editing:
+                OnStartStyleRecording?.Invoke();
+                e.Handled = true;
+                break;
+
+            case var k when k == StyleKey && _visualState == ViewState.Recording:
+                OnStopRecording?.Invoke();
+                e.Handled = true;
+                break;
+
+            case Key.Z when _visualState == ViewState.Editing
+                         && Keyboard.Modifiers == ModifierKeys.Control:
+                if (OnUndoStyle != null)
+                {
+                    OnUndoStyle.Invoke();
+                    e.Handled = true;
+                }
                 break;
         }
     }

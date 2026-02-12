@@ -9,6 +9,7 @@ public class AppSettings
     public string HotkeyKey { get; set; } = "P";
     public string HotkeyModifier { get; set; } = "Alt";
     public bool EnableScreenContext { get; set; } = false;
+    public string StyleKey { get; set; } = "Tab";
 }
 
 public static class TranscriptionLanguages
