@@ -100,47 +100,56 @@ public class GeminiService
         var model = googleAi.CreateGeminiModel(_analysisModel);
 
         var prompt = $$"""
-            音声文字起こしの修正diffを分析してください。
-            あなたの仕事は、元テキストと修正後テキストの**差分だけ**を見て、次回以降の音声認識精度を向上させるための学習データを抽出することです。
-            テキストの内容や意味には一切言及せず、「何が変わったか」だけに集中してください。
+            Analyze the diff between a speech-to-text transcription and the user's corrected version.
+            Extract learning data to improve future transcription accuracy.
+            Focus ONLY on what changed — never comment on the content or meaning of the text.
 
-            【元テキスト】
+            ## Original transcription
             {{original}}
 
-            【修正後テキスト】
+            ## User-corrected text
             {{corrected}}
 
-            【現在のメモリ】
+            ## Current memory
             {{JsonSerializer.Serialize(currentMemory, JsonOpts)}}
 
-            ## 分析手順
-            1. 元テキストと修正後テキストを1文字ずつ比較し、変更箇所をすべて列挙する
-            2. 各変更箇所を以下のカテゴリに分類する:
-               - **誤認識**: 音声が正しく認識されなかった（最重要。例:「ぎゃっす」→「Geass」）
-               - **同音異義語**: 正しい読みだが漢字が違う（例:「公開」→「後悔」）
-               - **表記ゆれ**: 送り仮名や表記の好み（例:「行なう」→「行う」）
-               - **スタイル**: 句読点、数字表記、改行などのルール
-               - **内容変更**: 発話内容自体の書き換え（認識ミスではない）
-            3. 「内容変更」のみの場合はNoUpdateを返す
+            ## Analysis steps
+            1. Compare original and corrected text, listing all changes
+            2. Classify each change:
+               - **Misrecognition**: Speech was incorrectly recognized (e.g. "ぎゃっす" → "Geass") → DifficultWords
+               - **Style/formatting**: Okurigana, punctuation, number formatting preferences → StylePreferences
+               - **Generalizable rule**: A repeatable pattern, NOT a specific word fix → TranscriptionRules
+               - **Domain signal**: Change suggests the user's field of expertise → UserDomain
+               - **Content edit**: User rewrote the meaning (not a recognition error) → Ignore
+            3. If ALL changes are content edits, return NoUpdate
 
-            ## 出力形式（JSONのみ、説明文不要）
+            ## Output format (JSON only, no explanations)
 
-            変更が「内容変更」のみ、または空白・改行のみの場合:
+            If only content edits or whitespace changes:
             {"NoUpdate": true}
 
-            学習すべき変更がある場合:
+            If there are learnable changes:
             {
-              "DifficultWords": ["誤認識された単語の正しい表記リスト（既存のものも保持）"],
-              "StylePreferences": ["ユーザーの表記ルール（既存のものも保持）"],
-              "CorrectionsSummary": "既存の要約を保持しつつ、今回の変更パターンを簡潔に追記"
+              "DifficultWords": ["correct spelling of misrecognized words (preserve existing)"],
+              "StylePreferences": ["user's formatting rules (preserve existing)"],
+              "TranscriptionRules": ["generalizable rules (preserve existing, max 10)"],
+              "UserDomain": "user's domain (preserve/supplement existing)"
             }
 
-            ## 注意
-            - DifficultWordsには正しい表記のみ記録する（例: "Geass", "WordPress"）
-            - CorrectionsSummaryにはテキストの内容を書かないこと。変更パターンだけを記録する
-              良い例: "「〜ください」を「〜下さい」に修正する傾向"
-              悪い例: "ユーザーがコードの改善について話していた"
-            - 既存のメモリ内容は必ず保持し、新しい学習内容を追加する形にする
+            ## TranscriptionRules criteria
+            Only include rules that generalize across ANY context.
+            GOOD examples:
+            - "Prefer English original for tech terms (e.g. release, deploy, not リリース, デプロイ)"
+            - "Use です・ます style consistently at end of sentences"
+            - "Use kanji for number+counter expressions (10個, 3つ)"
+            BAD examples (put these in DifficultWords instead):
+            - "Change コンテキスト to codex" → specific word fix
+            - "Convert katakana names to alphabet" → context-dependent, not generalizable
+
+            ## Important
+            - DifficultWords: record ONLY the correct spelling (e.g. "Geass", "WordPress")
+            - Always preserve existing memory entries and append new ones
+            - If TranscriptionRules exceeds 10 items, merge or drop the least important ones
             """;
 
         var request = new GenerateContentRequest();
@@ -167,19 +176,20 @@ public class GeminiService
         var model = googleAi.CreateGeminiModel(_analysisModel);
 
         var prompt = $$"""
-            以下のメモリデータを最適化し、約500トークン以内に圧縮してください。
+            Optimize and compress the following memory data to fit within ~500 tokens.
 
-            **重要**: DifficultWords（音声認識が誤認識した単語）は最優先で保持してください。
-            重複や類似項目を統合し、古い情報や汎用的すぎる情報を削除してください。
+            **Priority**: DifficultWords (misrecognized words) must be preserved first.
+            Merge duplicates and similar entries. Remove outdated or overly generic information.
 
-            【現在のメモリ】
+            ## Current memory
             {{JsonSerializer.Serialize(memory, JsonOpts)}}
 
-            以下のJSON形式で返してください（他のテキストは不要）:
+            Return the following JSON format (no other text):
             {
-              "DifficultWords": ["頻出する誤認識単語・固有名詞のみ（最重要）"],
-              "StylePreferences": ["統合されたスタイル傾向"],
-              "CorrectionsSummary": "圧縮された修正傾向の要約"
+              "DifficultWords": ["frequently misrecognized words/proper nouns only (highest priority)"],
+              "StylePreferences": ["consolidated style rules"],
+              "TranscriptionRules": ["generalizable transcription rules (max 10, merge duplicates)"],
+              "UserDomain": "user's domain/field"
             }
             """;
 
@@ -225,9 +235,14 @@ public class GeminiService
             parts.Add($"User style preferences: {string.Join("; ", memory.StylePreferences)}");
         }
 
-        if (!string.IsNullOrWhiteSpace(memory.CorrectionsSummary))
+        if (memory.TranscriptionRules.Count > 0)
         {
-            parts.Add($"Past correction patterns: {memory.CorrectionsSummary}");
+            parts.Add($"Transcription rules (follow these): {string.Join("; ", memory.TranscriptionRules)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(memory.UserDomain))
+        {
+            parts.Add($"User's domain: {memory.UserDomain} — use this context to disambiguate homophones and technical terms.");
         }
 
         return string.Join("\n\n", parts);
