@@ -8,7 +8,7 @@ using Geass.Services;
 
 namespace Geass.ViewModels;
 
-public partial class SettingsViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private static readonly JsonSerializerOptions DisplayJsonOptions = new()
     {
@@ -20,6 +20,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly MemoryService _memoryService;
     private readonly GeminiService _geminiService;
     private readonly HotkeyService _hotkeyService;
+    private string _loadedFingerprint = "";
+    private bool _isLoading;
 
     [ObservableProperty]
     private string _apiKey = "";
@@ -68,6 +70,24 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _enableScreenContext;
 
+    [ObservableProperty]
+    private bool _hasUnsavedChanges;
+
+    [ObservableProperty]
+    private bool _isSaving;
+
+    [ObservableProperty]
+    private bool _isBusy;
+
+    [ObservableProperty]
+    private bool _canEdit = true;
+
+    [ObservableProperty]
+    private string _statusMessage = "";
+
+    [ObservableProperty]
+    private bool _hasValidationError;
+
     public string[] AvailableModels => GeminiModels.Available;
 
     public SettingsViewModel(SettingsService settingsService, MemoryService memoryService, GeminiService geminiService, HotkeyService hotkeyService)
@@ -88,22 +108,24 @@ public partial class SettingsViewModel : ObservableObject
             IsMemoryUpdating = isUpdating;
 
             // Reload memory when background update finishes
-            if (!isUpdating)
+            if (!isUpdating && !HasUnsavedChanges)
             {
                 var memory = await _memoryService.LoadAsync();
                 MemoryJson = JsonSerializer.Serialize(memory, DisplayJsonOptions);
                 EstimatedTokens = _memoryService.EstimateTokens(memory);
+                MarkClean();
             }
         });
     }
 
     public async Task LoadAsync()
     {
+        _isLoading = true;
         var settings = await _settingsService.LoadAsync();
-        ApiKey = settings.GeminiApiKey;
+        ApiKey = settings.GeminiApiKey.Trim();
         SelectedTranscriptionModel = settings.TranscriptionModel;
         SelectedAnalysisModel = settings.AnalysisModel;
-        Language = settings.Language;
+        Language = string.IsNullOrWhiteSpace(settings.Language) ? TranscriptionLanguages.Default : settings.Language.Trim();
         EnableScreenContext = settings.EnableScreenContext;
 
         _hotkeyKey = HotkeyService.ParseKey(settings.HotkeyKey);
@@ -116,6 +138,13 @@ public partial class SettingsViewModel : ObservableObject
         var memory = await _memoryService.LoadAsync();
         MemoryJson = JsonSerializer.Serialize(memory, DisplayJsonOptions);
         EstimatedTokens = _memoryService.EstimateTokens(memory);
+
+        SaveButtonText = "Save";
+        StatusMessage = "";
+        HasValidationError = false;
+        _isLoading = false;
+        MarkClean();
+        NotifyCommandStates();
     }
 
     partial void OnIsRecordingHotkeyChanged(bool value)
@@ -132,6 +161,7 @@ public partial class SettingsViewModel : ObservableObject
         _hotkeyModifier = modifier;
         HotkeyDisplay = HotkeyService.FormatHotkey(modifier, key);
         IsRecordingHotkey = false;
+        TrackUnsavedChanges();
     }
 
     public void SetStyleKey(Key key)
@@ -139,6 +169,7 @@ public partial class SettingsViewModel : ObservableObject
         _styleKey = key;
         StyleKeyDisplay = FormatKeyName(key);
         IsRecordingStyleKey = false;
+        TrackUnsavedChanges();
     }
 
     public static string FormatKeyName(Key key) => key switch
@@ -157,36 +188,100 @@ public partial class SettingsViewModel : ObservableObject
         _ => key.ToString()
     };
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
-        var settings = new AppSettings
+        if (IsBusy) return;
+
+        if (!TryBuildSettingsForSave(out var settings, out var memory, out var validationMessage))
         {
-            GeminiApiKey = ApiKey,
+            HasValidationError = true;
+            StatusMessage = validationMessage;
+            SaveButtonText = "Save";
+            return;
+        }
+
+        IsSaving = true;
+        SaveButtonText = "Saving...";
+        StatusMessage = "";
+        HasValidationError = false;
+
+        try
+        {
+            await _settingsService.SaveAsync(settings);
+            await _memoryService.SaveAsync(memory);
+
+            SaveButtonText = "Saved!";
+            IsSaved = true;
+            HasValidationError = false;
+            StatusMessage = "Settings saved";
+            MarkClean();
+            await Task.Delay(1200);
+        }
+        finally
+        {
+            SaveButtonText = "Save";
+            IsSaved = false;
+            IsSaving = false;
+        }
+    }
+
+    private bool TryBuildSettingsForSave(out AppSettings settings, out MemoryStore memory, out string validationMessage)
+    {
+        settings = new AppSettings();
+        memory = new MemoryStore();
+        validationMessage = "";
+
+        var normalizedApiKey = (ApiKey ?? "").Trim();
+        var normalizedLanguage = string.IsNullOrWhiteSpace(Language) ? TranscriptionLanguages.Default : Language.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedApiKey))
+        {
+            validationMessage = "API key is required.";
+            return false;
+        }
+
+        try
+        {
+            memory = JsonSerializer.Deserialize<MemoryStore>(MemoryJson) ?? new MemoryStore();
+        }
+        catch (JsonException)
+        {
+            validationMessage = "Memory JSON is invalid. Fix it before saving.";
+            return false;
+        }
+
+        settings = new AppSettings
+        {
+            GeminiApiKey = normalizedApiKey,
             TranscriptionModel = SelectedTranscriptionModel,
             AnalysisModel = SelectedAnalysisModel,
-            Language = Language,
+            Language = normalizedLanguage,
             HotkeyKey = _hotkeyKey.ToString(),
             HotkeyModifier = _hotkeyModifier.ToString(),
             EnableScreenContext = EnableScreenContext,
             StyleKey = _styleKey.ToString()
         };
-        await _settingsService.SaveAsync(settings);
 
-        var memory = JsonSerializer.Deserialize<MemoryStore>(MemoryJson) ?? new MemoryStore();
-        await _memoryService.SaveAsync(memory);
-
-        SaveButtonText = "Saved!";
-        IsSaved = true;
-        await Task.Delay(1500);
-        SaveButtonText = "Save";
-        IsSaved = false;
+        // Keep normalized values in the UI after successful validation.
+        ApiKey = normalizedApiKey;
+        Language = normalizedLanguage;
+        return true;
     }
 
-    [RelayCommand]
+    private bool CanSave()
+    {
+        return !IsBusy && HasUnsavedChanges;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunMemoryActions))]
     private async Task OptimizeMemoryAsync()
     {
+        if (IsBusy) return;
+
         IsMemoryUpdating = true;
+        HasValidationError = false;
+        StatusMessage = "";
         try
         {
             var memory = JsonSerializer.Deserialize<MemoryStore>(MemoryJson) ?? new MemoryStore();
@@ -194,22 +289,128 @@ public partial class SettingsViewModel : ObservableObject
             MemoryJson = JsonSerializer.Serialize(optimized, DisplayJsonOptions);
             EstimatedTokens = _memoryService.EstimateTokens(optimized);
         }
+        catch (JsonException)
+        {
+            HasValidationError = true;
+            StatusMessage = "Memory JSON is invalid. Fix it before optimizing.";
+        }
         finally
         {
             IsMemoryUpdating = false;
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunMemoryActions))]
     private void ClearMemory()
     {
+        if (IsBusy) return;
+
         var empty = new MemoryStore();
         MemoryJson = JsonSerializer.Serialize(empty, DisplayJsonOptions);
         EstimatedTokens = _memoryService.EstimateTokens(empty);
+        HasValidationError = false;
+        StatusMessage = "";
+    }
+
+    private bool CanRunMemoryActions()
+    {
+        return !IsBusy;
+    }
+
+    private void TrackUnsavedChanges()
+    {
+        if (_isLoading) return;
+
+        var hasChanges = BuildFingerprint() != _loadedFingerprint;
+        if (HasUnsavedChanges != hasChanges)
+        {
+            HasUnsavedChanges = hasChanges;
+        }
+    }
+
+    private void MarkClean()
+    {
+        _loadedFingerprint = BuildFingerprint();
+        HasUnsavedChanges = false;
+    }
+
+    private string BuildFingerprint()
+    {
+        return string.Join("|",
+            (ApiKey ?? "").Trim(),
+            SelectedTranscriptionModel ?? "",
+            SelectedAnalysisModel ?? "",
+            (Language ?? "").Trim(),
+            _hotkeyKey,
+            _hotkeyModifier,
+            EnableScreenContext,
+            _styleKey,
+            (MemoryJson ?? "").Trim());
+    }
+
+    private void UpdateBusyState()
+    {
+        IsBusy = IsSaving || IsMemoryUpdating;
+        CanEdit = !IsBusy;
+        NotifyCommandStates();
+    }
+
+    private void NotifyCommandStates()
+    {
+        SaveCommand.NotifyCanExecuteChanged();
+        OptimizeMemoryCommand.NotifyCanExecuteChanged();
+        ClearMemoryCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnApiKeyChanged(string value)
+    {
+        TrackUnsavedChanges();
+    }
+
+    partial void OnSelectedTranscriptionModelChanged(string value)
+    {
+        TrackUnsavedChanges();
+    }
+
+    partial void OnSelectedAnalysisModelChanged(string value)
+    {
+        TrackUnsavedChanges();
+    }
+
+    partial void OnLanguageChanged(string value)
+    {
+        TrackUnsavedChanges();
+    }
+
+    partial void OnEnableScreenContextChanged(bool value)
+    {
+        TrackUnsavedChanges();
+    }
+
+    partial void OnHasUnsavedChangesChanged(bool value)
+    {
+        NotifyCommandStates();
+    }
+
+    partial void OnIsSavingChanged(bool value)
+    {
+        UpdateBusyState();
+    }
+
+    partial void OnIsMemoryUpdatingChanged(bool value)
+    {
+        UpdateBusyState();
+    }
+
+    public void Dispose()
+    {
+        _memoryService.IsUpdatingChanged -= OnMemoryUpdatingChanged;
     }
 
     partial void OnMemoryJsonChanged(string value)
     {
+        TrackUnsavedChanges();
+
         try
         {
             var memory = JsonSerializer.Deserialize<MemoryStore>(value);

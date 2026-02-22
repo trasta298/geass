@@ -11,6 +11,7 @@ namespace Geass.Views;
 public partial class SettingsWindow : Window
 {
     private bool _isUpdatingPassword;
+    private bool _allowCloseWithoutPrompt;
     private Storyboard? _spinStoryboard;
 
     public SettingsViewModel ViewModel => (SettingsViewModel)DataContext;
@@ -32,6 +33,8 @@ public partial class SettingsWindow : Window
         };
 
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        Closing += OnWindowClosing;
+        Closed += OnWindowClosed;
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -184,5 +187,52 @@ public partial class SettingsWindow : Window
             ApiKeyPasswordBox.Visibility = Visibility.Visible;
             ApiKeyPasswordBox.Focus();
         }
+    }
+
+    private void CancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        if (_allowCloseWithoutPrompt) return;
+
+        if (ViewModel.IsBusy)
+        {
+            MessageBox.Show(
+                this,
+                "Please wait for the current operation to finish.",
+                "Settings",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            e.Cancel = true;
+            return;
+        }
+
+        if (!ViewModel.HasUnsavedChanges) return;
+
+        var result = MessageBox.Show(
+            this,
+            "You have unsaved changes. Discard them and close settings?",
+            "Discard changes?",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        _allowCloseWithoutPrompt = true;
+    }
+
+    private void OnWindowClosed(object? sender, EventArgs e)
+    {
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.Dispose();
+        Closing -= OnWindowClosing;
+        Closed -= OnWindowClosed;
     }
 }
