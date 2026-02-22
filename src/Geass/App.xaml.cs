@@ -202,7 +202,14 @@ public partial class App : Application
         };
 
         _audioCaptureService.RecordingStopped += OnRecordingAutoStopped;
-        _audioCaptureService.StartRecording();
+        if (!TryStartCaptureForCurrentWindow())
+        {
+            _state = AppState.Idle;
+            _transcriptionWindow?.Close();
+            _transcriptionWindow = null;
+            return;
+        }
+
         _transcriptionWindow.ShowRecording();
     }
 
@@ -218,10 +225,28 @@ public partial class App : Application
 
         _state = AppState.Streaming;
         _audioCaptureService.RecordingStopped -= OnRecordingAutoStopped;
+        _audioCaptureService.InputStatusChanged -= OnInputStatusChanged;
+        _audioCaptureService.InputLevelChanged -= OnInputLevelChanged;
 
         _transcriptionWindow?.ShowProcessing();
 
         var wavPath = await _audioCaptureService.StopRecording();
+        if (!_audioCaptureService.LastRecordingHadMeaningfulAudio)
+        {
+            try { File.Delete(wavPath); } catch { }
+            _state = AppState.Recording;
+            _screenAnalysisTask = null;
+            _transcriptionWindow?.ShowRecording();
+            _transcriptionWindow?.ShowTransientToast("No speech detected yet");
+            _audioCaptureService.RecordingStopped += OnRecordingAutoStopped;
+            if (!TryStartCaptureForCurrentWindow())
+            {
+                _state = AppState.Idle;
+                _transcriptionWindow?.Close();
+                _transcriptionWindow = null;
+            }
+            return;
+        }
 
         _transcriptionWindow?.ShowStreaming();
 
@@ -369,7 +394,12 @@ public partial class App : Application
         _transcriptionWindow.OnStopRecording = async () => await StopStyleRecordingAndReformat();
 
         _audioCaptureService.RecordingStopped += OnStyleRecordingAutoStopped;
-        _audioCaptureService.StartRecording();
+        if (!TryStartCaptureForCurrentWindow())
+        {
+            ReturnToEditing();
+            return;
+        }
+
         _transcriptionWindow.ShowStyleRecording();
     }
 
@@ -380,10 +410,23 @@ public partial class App : Application
 
         _state = AppState.StyleStreaming;
         _audioCaptureService.RecordingStopped -= OnStyleRecordingAutoStopped;
+        _audioCaptureService.InputStatusChanged -= OnInputStatusChanged;
+        _audioCaptureService.InputLevelChanged -= OnInputLevelChanged;
 
         _transcriptionWindow?.ShowStyleStreaming();
 
         var wavPath = await _audioCaptureService.StopRecording();
+        if (!_audioCaptureService.LastRecordingHadMeaningfulAudio)
+        {
+            try { File.Delete(wavPath); } catch { }
+            _state = AppState.StyleRecording;
+            _transcriptionWindow?.ShowStyleRecording();
+            _transcriptionWindow?.ShowTransientToast("No style instruction detected yet");
+            _audioCaptureService.RecordingStopped += OnStyleRecordingAutoStopped;
+            if (!TryStartCaptureForCurrentWindow())
+                ReturnToEditing();
+            return;
+        }
 
         _streamingCts = new CancellationTokenSource();
         _ = StreamStyleReformat(wavPath, _streamingCts.Token);
@@ -472,12 +515,16 @@ public partial class App : Application
         if (_state == AppState.Recording)
         {
             _audioCaptureService.RecordingStopped -= OnRecordingAutoStopped;
+            _audioCaptureService.InputStatusChanged -= OnInputStatusChanged;
+            _audioCaptureService.InputLevelChanged -= OnInputLevelChanged;
             _ = _audioCaptureService.StopRecording();
         }
 
         if (_state == AppState.StyleRecording)
         {
             _audioCaptureService.RecordingStopped -= OnStyleRecordingAutoStopped;
+            _audioCaptureService.InputStatusChanged -= OnInputStatusChanged;
+            _audioCaptureService.InputLevelChanged -= OnInputLevelChanged;
             _ = _audioCaptureService.StopRecording();
         }
 
@@ -504,6 +551,63 @@ public partial class App : Application
         });
 
         _state = AppState.Idle;
+    }
+
+    private void OnInputStatusChanged(AudioCaptureService.AudioInputStatus status)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            switch (status)
+            {
+                case AudioCaptureService.AudioInputStatus.Listening:
+                    _transcriptionWindow?.SetRecordingStatus(_state == AppState.StyleRecording ? "Style..." : "Listening...");
+                    break;
+                case AudioCaptureService.AudioInputStatus.Muted:
+                    _transcriptionWindow?.SetRecordingStatus("Microphone muted. Unmute to continue.", true);
+                    break;
+                case AudioCaptureService.AudioInputStatus.NoInput:
+                    if (_audioCaptureService.LastRecordingHadMeaningfulAudio)
+                        _transcriptionWindow?.SetRecordingStatus("Silence detected...", true);
+                    else
+                        _transcriptionWindow?.SetRecordingStatus(
+                            _state == AppState.StyleRecording ? "Waiting for style instruction..." : "Waiting for speech...");
+                    break;
+                case AudioCaptureService.AudioInputStatus.Clipping:
+                    _transcriptionWindow?.SetRecordingStatus("Input too loud (clipping). Move farther away.", true);
+                    break;
+            }
+        });
+    }
+
+    private void OnInputLevelChanged(float normalizedLevel)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _transcriptionWindow?.SetInputLevel(normalizedLevel);
+        });
+    }
+
+    private bool TryStartCaptureForCurrentWindow()
+    {
+        _audioCaptureService.InputStatusChanged += OnInputStatusChanged;
+        _audioCaptureService.InputLevelChanged += OnInputLevelChanged;
+
+        try
+        {
+            _audioCaptureService.StartRecording();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _audioCaptureService.RecordingStopped -= OnRecordingAutoStopped;
+            _audioCaptureService.RecordingStopped -= OnStyleRecordingAutoStopped;
+            _audioCaptureService.InputStatusChanged -= OnInputStatusChanged;
+            _audioCaptureService.InputLevelChanged -= OnInputLevelChanged;
+
+            MessageBox.Show($"Unable to start microphone capture: {ex.Message}", "Geass",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
     }
 
     private void ShowSettings()

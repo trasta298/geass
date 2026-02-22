@@ -10,6 +10,8 @@ namespace Geass.Views;
 
 public partial class TranscriptionWindow : Window
 {
+    private const double InputMeterMaxWidth = 40;
+
     public enum ViewState { Recording, Processing, Streaming, Editing }
 
     private ViewState _visualState = ViewState.Recording;
@@ -87,9 +89,11 @@ public partial class TranscriptionWindow : Window
 
         WaveformCanvas.Visibility = Visibility.Visible;
         RecDot.Visibility = Visibility.Visible;
+        InputLevelMeter.Visibility = Visibility.Visible;
+        SetInputLevel(0f);
         Spinner.Visibility = Visibility.Collapsed;
         StreamDotsPanel.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Listening...";
+        SetRecordingStatus("Listening...");
         CompactPanel.Visibility = Visibility.Visible;
         ExpandedPanel.Visibility = Visibility.Collapsed;
 
@@ -125,6 +129,7 @@ public partial class TranscriptionWindow : Window
 
         WaveformCanvas.Visibility = Visibility.Collapsed;
         RecDot.Visibility = Visibility.Collapsed;
+        InputLevelMeter.Visibility = Visibility.Collapsed;
         Spinner.Visibility = Visibility.Visible;
         StreamDotsPanel.Visibility = Visibility.Collapsed;
         StatusText.Text = "Processing...";
@@ -142,6 +147,7 @@ public partial class TranscriptionWindow : Window
         Spinner.Visibility = Visibility.Collapsed;
         WaveformCanvas.Visibility = Visibility.Collapsed;
         RecDot.Visibility = Visibility.Collapsed;
+        InputLevelMeter.Visibility = Visibility.Collapsed;
         StreamDotsPanel.Visibility = Visibility.Visible;
         StatusText.Text = "Transcribing...";
 
@@ -218,9 +224,11 @@ public partial class TranscriptionWindow : Window
 
             WaveformCanvas.Visibility = Visibility.Visible;
             RecDot.Visibility = Visibility.Visible;
+            InputLevelMeter.Visibility = Visibility.Visible;
+            SetInputLevel(0f);
             Spinner.Visibility = Visibility.Collapsed;
             StreamDotsPanel.Visibility = Visibility.Collapsed;
-            StatusText.Text = "Style...";
+            SetRecordingStatus("Style...");
             CompactPanel.Visibility = Visibility.Visible;
 
             StartWaveformAnimation();
@@ -242,6 +250,7 @@ public partial class TranscriptionWindow : Window
 
             WaveformCanvas.Visibility = Visibility.Collapsed;
             RecDot.Visibility = Visibility.Collapsed;
+            InputLevelMeter.Visibility = Visibility.Collapsed;
             Spinner.Visibility = Visibility.Collapsed;
             StreamDotsPanel.Visibility = Visibility.Visible;
             StatusText.Text = "Applying...";
@@ -257,6 +266,45 @@ public partial class TranscriptionWindow : Window
             TranscriptionTextBox.Text = fullText;
             TranscriptionTextBox.CaretIndex = TranscriptionTextBox.Text.Length;
             TranscriptionTextBox.ScrollToEnd();
+        });
+    }
+
+    public void SetRecordingStatus(string text, bool isWarning = false)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            StatusText.Text = text;
+            StatusText.Foreground = isWarning
+                ? new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0xC8, 0x6A))
+                : new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
+        });
+    }
+
+    public void SetInputLevel(float normalizedLevel)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var clamped = Math.Clamp(normalizedLevel, 0f, 1f);
+            InputLevelFill.Width = InputMeterMaxWidth * clamped;
+        });
+    }
+
+    public void ShowTransientToast(string message)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            TransientToastText.Text = message;
+            TransientToast.Visibility = Visibility.Visible;
+            TransientToast.BeginAnimation(OpacityProperty, null);
+
+            var toastAnim = new DoubleAnimationUsingKeyFrames();
+            toastAnim.KeyFrames.Add(new EasingDoubleKeyFrame(0, KT(0)));
+            toastAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1, KT(0.12)));
+            toastAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1, KT(1.1)));
+            toastAnim.KeyFrames.Add(new EasingDoubleKeyFrame(0, KT(1.45)));
+            toastAnim.Completed += (_, _) => TransientToast.Visibility = Visibility.Collapsed;
+
+            TransientToast.BeginAnimation(OpacityProperty, toastAnim);
         });
     }
 
