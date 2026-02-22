@@ -43,6 +43,7 @@
         </Border.Effect>
 
         <Border CornerRadius="14" ClipToBounds="True">
+            <Grid>
             <StackPanel>
                 <!-- ═══ COMPACT STATE: Recording / Processing / Transcribing ═══ -->
                 <StackPanel x:Name="CompactPanel"
@@ -108,6 +109,23 @@
                                  Fill="{StaticResource AccentBrush}" Opacity="0.4" />
                     </StackPanel>
 
+                    <!-- Live input meter -->
+                    <Border x:Name="InputLevelMeter"
+                            Width="42"
+                            Height="8"
+                            Margin="0,0,10,0"
+                            CornerRadius="4"
+                            BorderThickness="1"
+                            BorderBrush="#4DFFFFFF"
+                            Background="#1FFFFFFF"
+                            Visibility="Collapsed">
+                        <Border x:Name="InputLevelFill"
+                                Width="0"
+                                HorizontalAlignment="Left"
+                                CornerRadius="3"
+                                Background="{StaticResource AccentBrush}" />
+                    </Border>
+
                     <!-- Status text -->
                     <TextBlock x:Name="StatusText"
                                Text="Listening..."
@@ -164,6 +182,25 @@
                     </Grid>
                 </StackPanel>
             </StackPanel>
+
+            <Border x:Name="TransientToast"
+                    Opacity="0"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,8,0,0"
+                    Padding="10,5"
+                    CornerRadius="999"
+                    BorderThickness="1"
+                    BorderBrush="#55FFFFFF"
+                    Background="#AA1A1A22">
+                <TextBlock x:Name="TransientToastText"
+                           Foreground="#FFF5F5F7"
+                           FontSize="11.5"
+                           FontFamily="Segoe UI Variable, Segoe UI, sans-serif"
+                           FontWeight="Medium" />
+            </Border>
+            </Grid>
         </Border>
     </Border>
 </Window>
